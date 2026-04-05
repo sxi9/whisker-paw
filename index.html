@@ -1722,17 +1722,33 @@ function submit() {
 
 // ── LOAD OR SEED ──
 (function () {
-  // 1. Firebase configured: always load from Firebase (source of truth), ignore stale localStorage
+  // 1. Firebase configured: show cached posts instantly, then always replace with Firebase data
   if (FB_DB_URL) {
+    // Show cached data immediately so page isn't blank while Firebase loads
+    try {
+      const saved = localStorage.getItem('wap_posts');
+      const savedNid = localStorage.getItem('wap_nid');
+      if (saved) {
+        posts = JSON.parse(saved);
+        nid = savedNid ? parseInt(savedNid) : posts.reduce((m,p)=>Math.max(m,p.id+1),1);
+        render();
+      }
+    } catch(e) {}
+    // Firebase is source of truth — always overwrite local data when it arrives
     loadFromFirebase().then(ok => {
       if (ok) { render(); return; }
-      // Firebase failed — fall back to localStorage cache
-      try {
-        const saved = localStorage.getItem('wap_posts');
-        const savedNid = localStorage.getItem('wap_nid');
-        if (saved) { posts = JSON.parse(saved); nid = savedNid ? parseInt(savedNid) : posts.reduce((m,p)=>Math.max(m,p.id+1),1); render(); return; }
-      } catch(e) {}
-      seedPosts();
+      // Firebase failed and no cache — try data.json fallback
+      if (!posts.length) {
+        fetch('./data.json').then(r => r.ok ? r.json() : null).then(data => {
+          if (data && Array.isArray(data.posts) && data.posts.length) {
+            posts = data.posts;
+            nid = data.nid || posts.reduce((m,p) => Math.max(m, p.id+1), 1);
+            localStorage.setItem('wap_posts', JSON.stringify(posts));
+            localStorage.setItem('wap_nid', nid);
+            render();
+          }
+        }).catch(() => {});
+      }
     });
     return;
   }
