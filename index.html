@@ -1003,20 +1003,18 @@ footer {
           <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
         </div>
 
-        <!-- CLOUD SYNC -->
+        <!-- FIREBASE BACKEND -->
         <div class="cloud-bar">
-          <div class="cloud-bar-title">☁ Cloud Sync — see posts from any browser</div>
+          <div class="cloud-bar-title">🔥 Firebase Backend — posts visible everywhere</div>
           <div class="cloud-bar-hint">
-            Free setup: go to <a href="https://jsonbin.io" target="_blank">jsonbin.io</a> → Sign up → Create Bin (paste <code>{"posts":[],"nid":1}</code>) → copy Bin ID &amp; Master Key below.
+            Step 1: <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → Add project → Build → Realtime Database → Create (test mode) → copy the URL shown (e.g. <code>https://your-app.firebaseio.com</code>) and send it to me so I can hardcode it.<br>
+            Step 2: Project Settings → Service Accounts → Database Secrets → Show → copy it below (one-time, stays on your device only).
           </div>
           <div class="cloud-fields">
-            <input class="cloud-field" id="cloud-bin-id"  placeholder="Bin ID  (e.g. 66a1b2c3d4e5f6a7b8c9d0e1)" autocomplete="off">
-            <input class="cloud-field" id="cloud-api-key" placeholder="Master Key  ($2a$10b$…)" type="password" autocomplete="off">
+            <input class="cloud-field" id="fb-secret-input" placeholder="Database Secret (from Firebase Project Settings)" type="password" autocomplete="off">
           </div>
           <div class="cloud-actions">
-            <button class="data-btn" onclick="connectCloud()">☁ Connect &amp; Sync</button>
-            <button class="data-btn" onclick="pushToCloud(true)" id="cloud-push-btn" style="display:none">⬆ Push local → cloud</button>
-            <button class="data-btn" onclick="disconnectCloud()" id="cloud-disconnect-btn" style="display:none">✕ Disconnect</button>
+            <button class="data-btn" onclick="connectFirebase()">🔥 Save &amp; Sync to Firebase</button>
             <span class="cloud-status" id="cloud-status"></span>
           </div>
         </div>
@@ -1345,7 +1343,8 @@ function checkPw() {
     document.getElementById('pw-form').style.display = 'block';
     document.getElementById('pw-input').value = '';
     document.getElementById('pw-err').style.display = 'none';
-    if (cloudConfig) { showCloudConnectedUI(); setCloudStatus('● Connected', 'ok'); }
+    if (FB_DB_URL) { setCloudStatus('● Firebase connected', 'ok'); }
+    if (fbSecret) { setCloudStatus('● Firebase ready — writes enabled', 'ok'); }
     if (pendingEditId !== null) {
       const pid = pendingEditId; pendingEditId = null;
       editPost(pid);
@@ -1593,105 +1592,73 @@ function setRating(type, val) {
   stars.forEach((s, i) => s.classList.toggle('on', i < val));
 }
 
-// ── CLOUD SYNC (JSONBin.io) ──
-let cloudConfig = null;
-(function initCloud() {
-  try {
-    const cc = localStorage.getItem('wap_cloud');
-    if (cc) { cloudConfig = JSON.parse(cc); }
-  } catch(e) {}
-})();
+// ── FIREBASE REALTIME DATABASE BACKEND ──
+// DB URL is hardcoded here after admin setup — visible to all visitors
+const FB_DB_URL = '';  // e.g. https://your-project-default-rtdb.firebaseio.com
 
-function cloudApiUrl(latest) {
-  return `https://api.jsonbin.io/v3/b/${cloudConfig.binId}` + (latest ? '/latest' : '');
-}
-function cloudHeaders() {
-  return { 'Content-Type': 'application/json', 'X-Master-Key': cloudConfig.apiKey };
-}
+// Admin secret — stored only in admin's localStorage (for writes)
+let fbSecret = null;
+try { fbSecret = localStorage.getItem('wap_fb_secret'); } catch(e) {}
+
 function setCloudStatus(msg, type) {
   const el = document.getElementById('cloud-status');
   if (!el) return;
   el.textContent = msg; el.className = 'cloud-status ' + (type || '');
 }
 
-async function pullFromCloud() {
-  if (!cloudConfig) return false;
+async function loadFromFirebase() {
+  if (!FB_DB_URL) return false;
   try {
     setCloudStatus('⏳ Loading…', 'busy');
-    const res = await fetch(cloudApiUrl(true), { headers: cloudHeaders() });
-    if (!res.ok) { setCloudStatus('⚠ Could not reach cloud', 'err'); return false; }
+    const res = await fetch(FB_DB_URL.replace(/\/$/, '') + '/wap.json');
+    if (!res.ok) { setCloudStatus('⚠ Cannot reach database', 'err'); return false; }
     const data = await res.json();
-    const record = data.record;
-    if (!record.posts) { setCloudStatus('⚠ Invalid cloud data', 'err'); return false; }
-    posts = record.posts;
-    nid   = record.nid || posts.reduce((m,p) => Math.max(m, p.id+1), 1);
+    if (!data || !Array.isArray(data.posts)) { setCloudStatus('● Database empty', 'busy'); return false; }
+    posts = data.posts;
+    nid   = data.nid || posts.reduce((m,p) => Math.max(m, p.id+1), 1);
     localStorage.setItem('wap_posts', JSON.stringify(posts));
     localStorage.setItem('wap_nid', nid);
-    setCloudStatus('● Synced ' + new Date().toLocaleTimeString(), 'ok');
+    setCloudStatus('● Live ' + new Date().toLocaleTimeString(), 'ok');
     return true;
-  } catch(e) { setCloudStatus('⚠ Offline — showing cached', 'err'); return false; }
+  } catch(e) { setCloudStatus('⚠ Offline — cached data', 'err'); return false; }
 }
 
-async function pushToCloud(showAlert) {
-  if (!cloudConfig) return;
+async function saveToFirebase() {
+  if (!FB_DB_URL || !fbSecret) return;
   try {
     setCloudStatus('⏳ Saving…', 'busy');
-    const res = await fetch(cloudApiUrl(false), {
+    const url = FB_DB_URL.replace(/\/$/, '') + '/wap.json?auth=' + encodeURIComponent(fbSecret);
+    const res = await fetch(url, {
       method: 'PUT',
-      headers: cloudHeaders(),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ posts, nid, updated: new Date().toISOString() })
     });
-    if (!res.ok) { setCloudStatus('⚠ Save failed', 'err'); return; }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setCloudStatus('⚠ ' + (err.error || 'Save failed'), 'err');
+      return;
+    }
     setCloudStatus('● Saved ' + new Date().toLocaleTimeString(), 'ok');
-    if (showAlert) alert('✓ Pushed ' + posts.length + ' post(s) to cloud!');
   } catch(e) { setCloudStatus('⚠ Offline', 'err'); }
 }
 
-async function connectCloud() {
-  const binId  = document.getElementById('cloud-bin-id')?.value.trim();
-  const apiKey = document.getElementById('cloud-api-key')?.value.trim();
-  if (!binId || !apiKey) { alert('Please enter both the Bin ID and Master Key.'); return; }
-  cloudConfig = { binId, apiKey };
-  localStorage.setItem('wap_cloud', JSON.stringify(cloudConfig));
-  showCloudConnectedUI();
-  const pulled = await pullFromCloud();
-  if (pulled) {
-    render();
-    const pushNow = posts.length === 0 || confirm(`Cloud loaded ${posts.length} post(s). Your local posts may differ.\n\nClick OK to keep cloud posts.\nClick Cancel to push your local posts to cloud instead.`);
-    if (!pushNow) await pushToCloud(false);
-  } else {
-    // Cloud empty or error — push local up
-    await pushToCloud(false);
+async function connectFirebase() {
+  const secret = document.getElementById('fb-secret-input')?.value.trim();
+  if (!secret) { alert('Please enter your Firebase Database Secret.'); return; }
+  fbSecret = secret;
+  localStorage.setItem('wap_fb_secret', fbSecret);
+  setCloudStatus('⏳ Connecting…', 'busy');
+  // Push current posts to Firebase
+  await saveToFirebase();
+  if (document.getElementById('cloud-status').classList.contains('ok')) {
+    document.getElementById('fb-secret-input').value = '••••••••';
+    alert('✓ Connected! Your ' + posts.length + ' post(s) are now in Firebase — visible to everyone.');
   }
-}
-
-function showCloudConnectedUI() {
-  const pushBtn  = document.getElementById('cloud-push-btn');
-  const discBtn  = document.getElementById('cloud-disconnect-btn');
-  if (pushBtn)  pushBtn.style.display  = 'inline-block';
-  if (discBtn)  discBtn.style.display  = 'inline-block';
-  if (cloudConfig) {
-    const binEl = document.getElementById('cloud-bin-id');
-    const keyEl = document.getElementById('cloud-api-key');
-    if (binEl) binEl.value = cloudConfig.binId;
-    if (keyEl) keyEl.value = cloudConfig.apiKey;
-  }
-}
-
-function disconnectCloud() {
-  if (!confirm('Disconnect cloud sync? Your posts will only be saved locally.')) return;
-  cloudConfig = null;
-  localStorage.removeItem('wap_cloud');
-  setCloudStatus('Disconnected', 'err');
-  const pushBtn = document.getElementById('cloud-push-btn');
-  const discBtn = document.getElementById('cloud-disconnect-btn');
-  if (pushBtn) pushBtn.style.display = 'none';
-  if (discBtn) discBtn.style.display = 'none';
 }
 
 function savePosts() {
   try { localStorage.setItem('wap_posts', JSON.stringify(posts)); localStorage.setItem('wap_nid', nid); } catch(e) {}
-  pushToCloud(false); // async, fire-and-forget
+  saveToFirebase(); // async fire-and-forget — syncs to Firebase if secret is set
 }
 
 function updateStats() {
@@ -1766,14 +1733,14 @@ function submit() {
 
 // ── LOAD OR SEED ──
 (function () {
-  // 1. Cloud config: show cached posts immediately, refresh from cloud
-  if (cloudConfig) {
+  // 1. Firebase configured: show cached posts instantly, refresh from Firebase in background
+  if (FB_DB_URL) {
     try {
       const saved = localStorage.getItem('wap_posts');
       const savedNid = localStorage.getItem('wap_nid');
       if (saved) { posts = JSON.parse(saved); nid = savedNid ? parseInt(savedNid) : posts.reduce((m,p)=>Math.max(m,p.id+1),1); render(); }
     } catch(e) {}
-    pullFromCloud().then(ok => { if (ok) render(); });
+    loadFromFirebase().then(ok => { if (ok) render(); });
     return;
   }
   // 2. localStorage has saved posts → use them
