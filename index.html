@@ -1760,44 +1760,9 @@ function submit() {
 }());
 
 function seedPosts() {
-  // first-run seed
-  posts = [
-    {
-      id: nid++, type: 'cafe', name: 'Matteo Coffee',
-      loc: 'Church Street, Bengaluru', item: 'Flat white + avocado toast',
-      date: '2026-03-28', price: '💰💰 Mid (₹200–500)', vibe: 'cozy, quiet, bookish',
-      rating: 5,
-      notes: 'Absolutely purrfect. The flat white was silky smooth, the toast had the right crunch. Three hours disappeared without notice. Would return every Sunday without question.',
-      photos: [
-        'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=700',
-        'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=700',
-        'https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=700'
-      ],
-      tags: ['coffee','brunch','cozy','solo']
-    },
-    {
-      id: nid++, type: 'travel', title: 'Weekend in Coorg',
-      dest: 'Coorg, Karnataka', how: '4hr drive', dur: '2 days', with: 'Friends',
-      date: '2026-03-22', rating: 5,
-      notes: 'Misty mornings, coffee estates as far as the eye can see, the most peaceful nap spots in all the hills. Hiked to Abbey Falls, ate at a tiny homestay, watched fog roll in over the valley every evening.',
-      photos: [
-        'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=700',
-        'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=700',
-        'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=700',
-        'https://images.unsplash.com/photo-1501854140801-50d01698950b?w=700'
-      ],
-      tags: ['hills','nature','fog','weekend']
-    },
-    {
-      id: nid++, type: 'diary', title: 'A slow glorious Sunday',
-      date: '2026-03-24', mood: '😴 Sleepy', loc: 'Home, Bengaluru',
-      notes: 'Did almost nothing today. Made chai twice. Sat by the window watching the crows argue. Finished half a book. Sometimes the best days are exactly like this.',
-      photos: [],
-      tags: ['lazy','home','chai','books']
-    }
-  ];
-  nid = 10;
-  savePosts();
+  // No default posts — start empty, all real posts come from Firebase
+  posts = [];
+  nid = 1;
   render();
 }
 
