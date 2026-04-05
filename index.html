@@ -1722,14 +1722,18 @@ function submit() {
 
 // ── LOAD OR SEED ──
 (function () {
-  // 1. Firebase configured: show cached posts instantly, refresh from Firebase in background
+  // 1. Firebase configured: always load from Firebase (source of truth), ignore stale localStorage
   if (FB_DB_URL) {
-    try {
-      const saved = localStorage.getItem('wap_posts');
-      const savedNid = localStorage.getItem('wap_nid');
-      if (saved) { posts = JSON.parse(saved); nid = savedNid ? parseInt(savedNid) : posts.reduce((m,p)=>Math.max(m,p.id+1),1); render(); }
-    } catch(e) {}
-    loadFromFirebase().then(ok => { if (ok) render(); });
+    loadFromFirebase().then(ok => {
+      if (ok) { render(); return; }
+      // Firebase failed — fall back to localStorage cache
+      try {
+        const saved = localStorage.getItem('wap_posts');
+        const savedNid = localStorage.getItem('wap_nid');
+        if (saved) { posts = JSON.parse(saved); nid = savedNid ? parseInt(savedNid) : posts.reduce((m,p)=>Math.max(m,p.id+1),1); render(); return; }
+      } catch(e) {}
+      seedPosts();
+    });
     return;
   }
   // 2. localStorage has saved posts → use them
