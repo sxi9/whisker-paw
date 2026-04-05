@@ -1007,14 +1007,10 @@ footer {
         <div class="cloud-bar">
           <div class="cloud-bar-title">🔥 Firebase Backend — posts visible everywhere</div>
           <div class="cloud-bar-hint">
-            Step 1: <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → Add project → Build → Realtime Database → Create (test mode) → copy the URL shown (e.g. <code>https://your-app.firebaseio.com</code>) and send it to me so I can hardcode it.<br>
-            Step 2: Project Settings → Service Accounts → Database Secrets → Show → copy it below (one-time, stays on your device only).
-          </div>
-          <div class="cloud-fields">
-            <input class="cloud-field" id="fb-secret-input" placeholder="Database Secret (from Firebase Project Settings)" type="password" autocomplete="off">
+            Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → Add project → Build → Realtime Database → Create database → <strong>Start in test mode</strong> → copy the URL and send it here. That's it — no keys needed!
           </div>
           <div class="cloud-actions">
-            <button class="data-btn" onclick="connectFirebase()">🔥 Save &amp; Sync to Firebase</button>
+            <button class="data-btn" onclick="connectFirebase()">🔥 Push posts to Firebase</button>
             <span class="cloud-status" id="cloud-status"></span>
           </div>
         </div>
@@ -1624,18 +1620,17 @@ async function loadFromFirebase() {
 }
 
 async function saveToFirebase() {
-  if (!FB_DB_URL || !fbSecret) return;
+  if (!FB_DB_URL) return;
   try {
     setCloudStatus('⏳ Saving…', 'busy');
-    const url = FB_DB_URL.replace(/\/$/, '') + '/wap.json?auth=' + encodeURIComponent(fbSecret);
-    const res = await fetch(url, {
+    const res = await fetch(FB_DB_URL.replace(/\/$/, '') + '/wap.json', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ posts, nid, updated: new Date().toISOString() })
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      setCloudStatus('⚠ ' + (err.error || 'Save failed'), 'err');
+      setCloudStatus('⚠ ' + (err.error || 'Save failed — check Firebase rules'), 'err');
       return;
     }
     setCloudStatus('● Saved ' + new Date().toLocaleTimeString(), 'ok');
@@ -1643,22 +1638,16 @@ async function saveToFirebase() {
 }
 
 async function connectFirebase() {
-  const secret = document.getElementById('fb-secret-input')?.value.trim();
-  if (!secret) { alert('Please enter your Firebase Database Secret.'); return; }
-  fbSecret = secret;
-  localStorage.setItem('wap_fb_secret', fbSecret);
+  if (!FB_DB_URL) { alert('Firebase URL not set yet. Please send me your Firebase Database URL first.'); return; }
   setCloudStatus('⏳ Connecting…', 'busy');
-  // Push current posts to Firebase
   await saveToFirebase();
-  if (document.getElementById('cloud-status').classList.contains('ok')) {
-    document.getElementById('fb-secret-input').value = '••••••••';
-    alert('✓ Connected! Your ' + posts.length + ' post(s) are now in Firebase — visible to everyone.');
-  }
+  const ok = document.getElementById('cloud-status').classList.contains('ok');
+  if (ok) alert('✓ Connected! Your ' + posts.length + ' post(s) are now live in Firebase — visible to everyone worldwide.');
 }
 
 function savePosts() {
   try { localStorage.setItem('wap_posts', JSON.stringify(posts)); localStorage.setItem('wap_nid', nid); } catch(e) {}
-  saveToFirebase(); // async fire-and-forget — syncs to Firebase if secret is set
+  saveToFirebase();
 }
 
 function updateStats() {
